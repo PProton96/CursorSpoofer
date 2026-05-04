@@ -4,7 +4,7 @@ This mod spoofs the server with fake packets to simulate your cursor always bein
 **The primary goal of this mod is to counter cheaters who use tools (such as extendedUI) to track other players' cursors for an unfair advantage.**
 
 Example Scenario:
-In a competitive PvP match between Pineapple69 and Mango67, Mango67 uses ExtendedUI to see Pineapple69’s cursor. When Pineapple69 prepares an attack, Mango67 immediately detects the cursor movement. By tracking the exact position of the cursor, he can identify which weak points are being targeted and react instantly. This happens without Mango67 needing to monitor the minimap, observe unit behavior, or manually analyze base vulnerabilities.
+In a competitive PvP match between Pineapple69 and Mango67, Mango67 uses extendedUI to see Pineapple69’s cursor. When Pineapple69 prepares an attack, Mango67 immediately detects the cursor movement. By tracking the exact position of the cursor, he can identify which weak points are being targeted and react instantly. This happens without Mango67 needing to monitor the minimap, observe unit behavior, or manually analyze base vulnerabilities.
 
 **Why put in the effort when your opponent unknowingly hands you all the information you need?**
 
