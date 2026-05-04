@@ -1,128 +1,124 @@
 package pproton;
 
-import arc.*;
-import arc.math.geom.Position;
-import arc.util.*;
-import arc.util.io.Writes;
-import arc.util.pooling.Pool;
-import arc.util.pooling.Pools;
+import arc.Events;
+import arc.func.Cons;
+import arc.net.Server;
+import arc.util.Log;
 import mindustry.Vars;
-import mindustry.game.EventType.*;
+import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.gen.ClientSnapshotCallPacket;
-import mindustry.mod.*;
-import mindustry.ui.dialogs.*;
+import mindustry.mod.Mod;
+import mindustry.net.Host;
+import mindustry.net.Net;
+import mindustry.net.NetConnection;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
-
 
 public class CursorSpooferMod extends Mod {
 
     @Override
     public void init() {
-        if (Vars.headless) return; // nothing to do on a dedicated server
+        if(Vars.headless) return;
 
-        // Wait until the full client is loaded before touching the pool registry
-        Events.on(ClientLoadEvent.class, e -> {
-            try {
-                injectSpoofedPool();
-                Log.info("[CursorMask] Cursor masking active.");
-            } catch (Throwable ex) {
-                Log.err("[CursorMask] Failed to install hook — " +
-                        "check field names against your build:", ex);
-            }
-        });
+        Events.on(ClientLoadEvent.class, event -> installSnapshotMaskHook());
     }
 
-    @SuppressWarnings("unchecked")
-    private void injectSpoofedPool() throws Exception {
-        // Arc stores all pools in a static ObjectMap<Class, Pool>.
-        // We replace the entry for ClientSnapshotPacket with our own pool
-        // so that Pools.obtain(ClientSnapshotPacket.class) returns our subclass.
-        Field typePools = Pools.class.getDeclaredField("typePools");
-        typePools.setAccessible(true);
+    private void installSnapshotMaskHook(){
+        try{
+            Field providerField = Net.class.getDeclaredField("provider");
+            providerField.setAccessible(true);
 
-        // The map is arc.struct.ObjectMap — cast is safe here
-        var map = (arc.struct.ObjectMap<Class, Pool>) typePools.get(null);
-
-        map.put(ClientSnapshotCallPacket.class, new Pool<ClientSnapshotCallPacket>() {
-            @Override
-            protected ClientSnapshotCallPacket newObject() {
-                return new SpoofedSnapshotPacket();
+            Net.NetProvider current = (Net.NetProvider)providerField.get(Vars.net);
+            if(current instanceof SnapshotMaskingProvider){
+                return;
             }
-        });
-    }
 
-    private static class SpoofedSnapshotPacket extends ClientSnapshotCallPacket {
-
-        @Override
-        public void write(Writes stream) {
-            // Only mask in an active multiplayer session where we have a live unit
-            if (Vars.net.client() && Vars.player != null && !Vars.player.dead()) {
-                float realX = pointerX, realY = pointerY;
-
-                // Replace with our unit's centre — what the server will store
-                // as player.mouseX / player.mouseY for other clients to see
-                pointerX = Vars.player.x;
-                pointerY = Vars.player.y;
-
-                super.write(stream); // serialise with spoofed values
-
-                // Restore originals (the object goes back to the pool afterwards)
-                pointerX = realX;
-                pointerY = realY;
-            } else {
-                super.write(stream); // singleplayer / not yet connected — send normally
-            }
+            providerField.set(Vars.net, new SnapshotMaskingProvider(current));
+            Log.info("[CursorSpoofer] Installed snapshot mask hook.");
+        }catch(Throwable t){
+            Log.err("[CursorSpoofer] Failed to install snapshot mask hook.", t);
         }
     }
 
-    public CursorSpooferMod() {
-        Log.info("Loaded ExampleJavaMod constructor.");
+    private static final class SnapshotMaskingProvider implements Net.NetProvider{
+        private final Net.NetProvider delegate;
 
-        //listen for game load event
-        Events.on(ClientLoadEvent.class, e -> {
-            //show dialog upon startup
-            Time.runTask(10f, () -> {
-                BaseDialog dialog = new BaseDialog("frog");
-                dialog.cont.add("behold").row();
-                //mod sprites are prefixed with the mod name (this mod is called 'example-java-mod' in its config)
-                dialog.cont.image(Core.atlas.find("cursor-spoofer-frog")).pad(20f).row();
-                dialog.cont.button("I see", dialog::hide).size(100f, 50f);
-                dialog.show();
-            });
-        });
+        private SnapshotMaskingProvider(Net.NetProvider delegate){
+            this.delegate = delegate;
+        }
 
+        @Override
+        public void connectClient(String ip, int port, Runnable success) throws IOException{
+            delegate.connectClient(ip, port, success);
+        }
 
+        @Override
+        public void sendClient(Object object, boolean reliable) {
+            if(object instanceof ClientSnapshotCallPacket packet) {
+                float oldPointerX = packet.pointerX;
+                float oldPointerY = packet.pointerY;
+                try {
+                    // Force reported cursor to unit position for this snapshot only.
+                    packet.pointerX = packet.x;
+                    packet.pointerY = packet.y;
+                    if (Vars.player.unit() != null && !Vars.player.shooting()) delegate.sendClient(packet, reliable);
+                } catch (Exception e) {
+                    Log.err("[CursorSpoofer] Failed to send client snapshot.", e);
+                } finally {
+                    packet.pointerX = oldPointerX;
+                    packet.pointerY = oldPointerY;
+                    if (Vars.player.shooting()) delegate.sendClient(packet, reliable);
+                }
+                return;
+            }
+
+            delegate.sendClient(object, reliable);
+        }
+
+        @Override
+        public void disconnectClient(){
+            delegate.disconnectClient();
+        }
+
+        @Override
+        public void discoverServers(Cons<Host> callback, Runnable done){
+            delegate.discoverServers(callback, done);
+        }
+
+        @Override
+        public void pingHost(String address, int port, Cons<Host> valid, Cons<Exception> failed){
+            delegate.pingHost(address, port, valid, failed);
+        }
+
+        @Override
+        public void hostServer(int port) throws IOException{
+            delegate.hostServer(port);
+        }
+
+        @Override
+        public Iterable<? extends NetConnection> getConnections(){
+            return delegate.getConnections();
+        }
+
+        @Override
+        public void closeServer(){
+            delegate.closeServer();
+        }
+
+        @Override
+        public void dispose(){
+            delegate.dispose();
+        }
+
+        @Override
+        public void setConnectFilter(Server.ServerConnectFilter connectFilter){
+            delegate.setConnectFilter(connectFilter);
+        }
+
+        @Override
+        public Server.ServerConnectFilter getConnectFilter(){
+            return delegate.getConnectFilter();
+        }
     }
-
-//    @Override
-//    public void init() {
-//        Events.run(Trigger.update, () -> {
-//            // Only run if we are in a multiplayer game and have a unit
-//            if (Vars.player.unit() != null && !Vars.player.unit().dead) {
-//                // Check if player is shooting
-//                boolean isShooting = Vars.player.shooting;
-//
-//                if (!isShooting) {
-//                    float uX = Vars.player.unit().x;
-//                    float uY = Vars.player.unit().y;
-//
-//                    // Direct field assignment (like New-Controls mod does)
-//                    Vars.player.mouseX = uX;
-//                    Vars.player.mouseY = uY;
-//
-//                    // Also sync unit aim (like New-Controls aimLook does)
-//                    Vars.player.unit().aimX(uX);
-//                    Vars.player.unit().aimY(uY);
-//                    Vars.player.unit().aimLook(uX, uY);
-//                }
-//            }
-//        });
-//    }
-
-    @Override
-    public void loadContent(){
-        Log.info("Loading some example content.");
-    }
-
 }
