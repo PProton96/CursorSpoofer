@@ -1,27 +1,87 @@
 package pproton;
 
+import arc.Core;
 import arc.Events;
 import arc.func.Cons;
 import arc.net.Server;
+import arc.scene.ui.Button;
+import arc.scene.ui.CheckBox;
+import arc.scene.ui.layout.Cell;
 import arc.util.Log;
+import arc.util.Time;
 import mindustry.Vars;
 import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.gen.ClientSnapshotCallPacket;
+import mindustry.gen.Icon;
 import mindustry.mod.Mod;
 import mindustry.net.Host;
 import mindustry.net.Net;
 import mindustry.net.NetConnection;
+import mindustry.ui.dialogs.BaseDialog;
+import mindustry.ui.dialogs.SettingsMenuDialog.SettingsTable;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
 
 public class CursorSpooferMod extends Mod {
 
+    public static boolean isEnabled() {
+        return Core.settings.getBool("spoofer-enabled", true);
+    }
+
+    public static void setEnabled(boolean newState) {
+        Core.settings.put("spoofer-enabled", newState);
+    }
+
     @Override
     public void init() {
         if(Vars.headless) return;
 
-        Events.on(ClientLoadEvent.class, event -> installSnapshotMaskHook());
+        Events.on(ClientLoadEvent.class, event -> {
+            installSnapshotMaskHook();
+            initializeUI();
+        });
+    }
+
+    private void initializeUI() {
+        Vars.ui.settings.addCategory("Cursor Spoofer", Icon.eye, this::initCategoryUI);
+    }
+    private void initCategoryUI(SettingsTable table) {
+        table.check("Enable Spoofer",
+                Core.settings.getBool("spoofer-enabled", true),
+                checked -> Core.settings.put("spoofer-enabled", checked)
+        ).row();
+        Cell[] ignoreShootingCheckbox = new Cell[1];
+
+        ignoreShootingCheckbox[0] = table.check("Ignore(Disable) Shooting",
+        Core.settings.getBool("spoofer-disable-shooting", false), checked -> {
+            if (!Core.settings.getBool("spoofer-disable-shooting")) {
+                showIgnoreShootingWarningDialog(ignoreShootingCheckbox[0]);
+            } else {
+                Core.settings.put("spoofer-disable-shooting", false);
+            }
+        });
+        // Can't add .row() after a checkbox because .row() returns void.
+        ignoreShootingCheckbox[0].row();
+    }
+    private void showIgnoreShootingWarningDialog(Cell checkbox) {
+        BaseDialog dialog = new BaseDialog("Confirm");
+        dialog.cont.add("Enable ignoring shooting?").fontScale(1.2f)
+                .center().row();
+        dialog.cont.add("You wouldn't be able to shoot!").center().row();
+        dialog.cont.add("(only visually)").center().row();
+        dialog.cont.table(buttons -> {
+            buttons.button("Yes", () -> {
+                Core.settings.put("spoofer-disable-shooting", true);
+                dialog.hide();
+            }).size(100f, 50f).pad(10f);
+            buttons.button("No", () -> {
+                Core.settings.put("spoofer-disable-shooting", false);
+                checkbox.checked(false);
+                dialog.hide();
+            }).size(100f, 50f).pad(10f);
+        }).center().row();
+        dialog.show();
     }
 
     private void installSnapshotMaskHook(){
@@ -59,16 +119,27 @@ public class CursorSpooferMod extends Mod {
                 float oldPointerX = packet.pointerX;
                 float oldPointerY = packet.pointerY;
                 try {
+                    if (!CursorSpooferMod.isEnabled()) return;
                     // Force reported cursor to unit position for this snapshot only.
                     packet.pointerX = packet.x;
                     packet.pointerY = packet.y;
-                    if (Vars.player.unit() != null && !Vars.player.shooting()) delegate.sendClient(packet, reliable);
+                    if (Vars.player.unit() == null) return;
+                    if (Core.settings.getBool("spoofer-disable-shooting")) {
+                        delegate.sendClient(packet, reliable);
+                        return;
+                    }
+                    if (!Vars.player.shooting()) delegate.sendClient(packet, reliable);
                 } catch (Exception e) {
                     Log.err("[CursorSpoofer] Failed to send client snapshot.", e);
                 } finally {
                     packet.pointerX = oldPointerX;
                     packet.pointerY = oldPointerY;
-                    if (Vars.player.shooting()) delegate.sendClient(packet, reliable);
+                    if (!CursorSpooferMod.isEnabled()) {
+                        delegate.sendClient(packet, reliable);
+                        return;
+                    }
+                    if (Vars.player.shooting() &&
+                        !Core.settings.getBool("spoofer-disable-shooting")) delegate.sendClient(packet, reliable);
                 }
                 return;
             }

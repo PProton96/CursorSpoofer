@@ -11,7 +11,7 @@ author: "PProton"
 main: "pproton.CursorSpooferMod"
 
 #the mod description as seen in the mod dialog
-description: "Makes server think your cursor is directly on your unit."
+description: "Hides your cursor from cheaters, now it will appear to always be on your unit, unless you try to shoot."
 
 #the mod version
 version: 1.0
@@ -22,5 +22,5 @@ minGameVersion: 154
 #this is a java mod
 java: true
 
-#whether the mod should be hidden froms servers
-hidden:true
+#whether the mod should be hidden from servers
+hidden: true
