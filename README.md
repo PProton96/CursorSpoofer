@@ -1,5 +1,5 @@
 # Mindustry Cursor Spoofer
-This mod spoofs the server with fake packets to simulate your cursor always being positioned over your unit. This state remains active unless you are firing, ensuring that the mod does not interfere with combat—unless the "ignore shooting" setting is enabled, which effectively disables your ability to shoot. I am also planning to add a feature that allows shooting without revealing the cursor position.
+This mod spoofs the server with fake packets to simulate your cursor always being positioned over your unit. This state remains active unless you are shooting, ensuring that the mod does not interfere with combat—unless the "ignore shooting" setting is enabled, which effectively disables your ability to shoot. I am also planning to add a feature that allows shooting without revealing the cursor position.
 
 **The primary goal of this mod is to counter cheaters who use tools (such as extendedUI) to track other players' cursors for an unfair advantage.**
 
